@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/enzo010/email-filter/internal/domain/entities"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
 )
 
 type TaskRepository struct {

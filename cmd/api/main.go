@@ -20,6 +20,8 @@ type Server struct {
 	db              *database.Database
 	emailRepo       *database.EmailRepository
 	taskRepo        *database.TaskRepository
+	userRepo        *database.UserRepository
+	tenantRepo      *database.TenantRepository
 	emailClassifier *services.EmailClassifier
 	emailProcessor  *services.EmailProcessor
 	router          *mux.Router
@@ -40,6 +42,8 @@ func NewServer() (*Server, error) {
 	// Inicializar repositórios
 	emailRepo := database.NewEmailRepository(db)
 	taskRepo := database.NewTaskRepository(db)
+	userRepo := database.NewUserRepository(db)
+	tenantRepo := database.NewTenantRepository(db)
 
 	// Inicializar classificador
 	emailClassifier := services.NewEmailClassifier()
@@ -52,6 +56,8 @@ func NewServer() (*Server, error) {
 		Password: os.Getenv("EMAIL_PASSWORD"),
 		Folder:   "INBOX",
 		SSL:      true,
+		TenantID: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11", // ID do tenant do script SQL
+		UserID:   "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11", // ID do usuário do script SQL
 	}
 
 	emailProcessor, err := services.NewEmailProcessor(emailConfig, emailClassifier, emailRepo)
@@ -66,19 +72,46 @@ func NewServer() (*Server, error) {
 		db:              db,
 		emailRepo:       emailRepo,
 		taskRepo:        taskRepo,
+		userRepo:        userRepo,
+		tenantRepo:      tenantRepo,
 		emailClassifier: emailClassifier,
 		emailProcessor:  emailProcessor,
 		router:          router,
 	}, nil
 }
 
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Tenant-ID")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Access-Control-Max-Age", "300")
+
+		if r.Method == "OPTIONS" {
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Tenant-ID")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (s *Server) setupRoutes() {
+	// Aplicar middleware CORS globalmente
+	s.router.Use(corsMiddleware)
+
 	// Endpoints de saúde e métricas
 	s.router.HandleFunc("/health", s.healthCheck).Methods("GET")
 	s.router.HandleFunc("/metrics", s.metrics).Methods("GET")
 
 	// API v1
 	api := s.router.PathPrefix("/api/v1").Subrouter()
+
+	// Endpoints de autenticação
+	api.HandleFunc("/auth/login", s.handleLogin).Methods("POST", "OPTIONS")
 
 	// Endpoints de emails
 	api.HandleFunc("/emails", s.handleClassifyEmail).Methods("POST")
@@ -89,6 +122,59 @@ func (s *Server) setupRoutes() {
 	api.HandleFunc("/tasks", s.handleListTasks).Methods("GET")
 	api.HandleFunc("/tasks/{id}", s.handleUpdateTask).Methods("PUT")
 	api.HandleFunc("/tasks/{id}", s.handleDeleteTask).Methods("DELETE")
+}
+
+func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	var credentials struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&credentials); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Buscar usuário pelo email
+	user, err := s.userRepo.GetByEmail(r.Context(), credentials.Email)
+	if err != nil {
+		http.Error(w, "Credenciais inválidas", http.StatusUnauthorized)
+		return
+	}
+
+	// TODO: Implementar verificação de senha com hash
+	if credentials.Password != "test123" {
+		http.Error(w, "Credenciais inválidas", http.StatusUnauthorized)
+		return
+	}
+
+	// Buscar tenant do usuário
+	tenant, err := s.tenantRepo.GetByID(r.Context(), user.TenantID)
+	if err != nil {
+		http.Error(w, "Erro ao buscar tenant", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"user": map[string]interface{}{
+			"id":        user.ID,
+			"email":     user.Email,
+			"name":      user.Name,
+			"role":      user.Role,
+			"tenantId":  user.TenantID,
+			"createdAt": user.CreatedAt,
+		},
+		"tenant": map[string]interface{}{
+			"id":        tenant.ID,
+			"name":      tenant.Name,
+			"plan":      tenant.Plan,
+			"createdAt": tenant.CreatedAt,
+		},
+		// TODO: Implementar geração de token JWT
+		"token": "dummy-token",
+	}
+
+	json.NewEncoder(w).Encode(response)
 }
 
 func (s *Server) healthCheck(w http.ResponseWriter, r *http.Request) {

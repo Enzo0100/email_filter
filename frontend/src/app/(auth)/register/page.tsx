@@ -5,6 +5,7 @@ import Link from "next/link"
 import { Mail, Lock, Building, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { authApi } from "@/lib/api"
 
 export default function RegisterPage() {
   const [formData, setFormData] = useState({
@@ -28,9 +29,12 @@ export default function RegisterPage() {
 
     setIsLoading(true)
     try {
-      // TODO: Implementar integração com a API de registro
-      console.log("Registro:", formData)
-      await new Promise((resolve) => setTimeout(resolve, 1000)) // Simulação de delay
+      await authApi.register({
+        name: formData.name,
+        email: formData.email,
+        password: formData.password,
+        companyName: formData.companyName
+      })
     } catch (error) {
       console.error("Erro ao registrar:", error)
     } finally {

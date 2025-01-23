@@ -5,9 +5,8 @@ describe('Testes de Integração API', () => {
     name: 'Usuário Teste',
     email: `test${Date.now()}@example.com`,
     password: 'senha123',
+    companyName: 'Test Company'
   };
-
-  let authToken: string;
 
   describe('Autenticação', () => {
     test('deve registrar um novo usuário', async () => {
@@ -18,8 +17,6 @@ describe('Testes de Integração API', () => {
       expect(response.user).toHaveProperty('id');
       expect(response.user.email).toBe(testUser.email);
       expect(response.user.name).toBe(testUser.name);
-      
-      authToken = response.token;
     });
 
     test('deve fazer login com o usuário criado', async () => {
@@ -31,8 +28,6 @@ describe('Testes de Integração API', () => {
       expect(response).toHaveProperty('token');
       expect(response).toHaveProperty('user');
       expect(response.user.email).toBe(testUser.email);
-      
-      authToken = response.token;
     });
   });
 

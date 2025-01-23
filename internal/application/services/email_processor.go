@@ -20,6 +20,8 @@ type EmailProcessor struct {
 	emailClassifier *EmailClassifier
 	emailRepo       entities.EmailRepository
 	config          *EmailConfig
+	tenantID        string
+	userID          string
 }
 
 // EmailConfig configuração para conexão com servidor de email
@@ -30,6 +32,8 @@ type EmailConfig struct {
 	Password string
 	Folder   string // Ex: "INBOX"
 	SSL      bool
+	TenantID string // Adicionado campo TenantID
+	UserID   string // Adicionado campo UserID
 }
 
 // NewEmailProcessor cria uma nova instância do processador de emails
@@ -60,6 +64,8 @@ func NewEmailProcessor(config *EmailConfig, classifier *EmailClassifier, repo en
 		emailClassifier: classifier,
 		emailRepo:       repo,
 		config:          config,
+		tenantID:        config.TenantID,
+		userID:          config.UserID,
 	}, nil
 }
 
@@ -199,10 +205,12 @@ func (ep *EmailProcessor) processMessage(ctx context.Context, msg *imap.Message)
 
 	// Criar entidade de email
 	email := &entities.Email{
-		Subject: subject,
-		From:    from,
-		To:      to,
-		Content: body,
+		TenantID: ep.tenantID, // Definir TenantID
+		UserID:   ep.userID,   // Definir UserID
+		Subject:  subject,
+		From:     from,
+		To:       to,
+		Content:  body,
 	}
 
 	// Classificar email

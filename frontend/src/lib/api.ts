@@ -27,6 +27,7 @@ interface RegisterData {
   name: string;
   email: string;
   password: string;
+  companyName: string;
 }
 
 interface AuthResponse {
@@ -63,7 +64,15 @@ export const authApi = {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        name: data.name,
+        email: data.email,
+        password: data.password,
+        tenant: {
+          name: data.companyName,
+          plan: 'free'
+        }
+      }),
       credentials: 'include',
     });
 

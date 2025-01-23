@@ -20,7 +20,7 @@ export default function SettingsPage() {
     autoArchive: false,
   })
 
-  const handleSettingChange = (key: keyof Settings, value: any) => {
+  const handleSettingChange = (key: keyof Settings, value: Settings[keyof Settings]) => {
     setSettings((prev) => ({ ...prev, [key]: value }))
   }
 

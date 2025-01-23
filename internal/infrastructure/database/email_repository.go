@@ -7,7 +7,7 @@ import (
 
 	"github.com/enzo010/email-filter/internal/domain/entities"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
 )
 
 type EmailRepository struct {

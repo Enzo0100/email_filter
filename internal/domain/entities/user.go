@@ -6,14 +6,15 @@ import (
 
 // User representa um usuário do sistema
 type User struct {
-	ID        string    `json:"id"`
-	TenantID  string    `json:"tenant_id"`
-	Email     string    `json:"email"`
-	Name      string    `json:"name"`
-	Role      string    `json:"role"` // admin, user
-	Active    bool      `json:"active"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID           string    `json:"id"`
+	TenantID     string    `json:"tenant_id"`
+	Email        string    `json:"email"`
+	Name         string    `json:"name"`
+	PasswordHash string    `json:"-"`
+	Role         string    `json:"role"` // admin, user
+	Active       bool      `json:"active"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // UserRepository interface para operações com usuários

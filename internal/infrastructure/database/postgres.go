@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Database representa a conexão com o banco de dados
@@ -54,7 +54,7 @@ func NewDatabase(ctx context.Context, cfg *Config) (*Database, error) {
 	poolConfig.MinConns = 5
 
 	// Criar pool de conexões
-	pool, err := pgxpool.ConnectConfig(ctx, poolConfig)
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao conectar ao banco: %v", err)
 	}
