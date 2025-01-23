@@ -1,0 +1,59 @@
+# Binários e executáveis
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+email-filter
+
+# Arquivos de teste
+*.test
+*.tmp
+coverage.out
+
+# Arquivos de IDE e editores
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Dependências
+/vendor/
+
+# Arquivos de ambiente
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Arquivos temporários
+tmp/
+temp/
+
+# Arquivos de build
+dist/
+build/
+
+# Cache
+*.cache
+.cache/
+
+# Certificados e chaves
+*.pem
+*.key
+*.crt
+
+# Arquivos de backup
+*.bak
+*.backup
+*~

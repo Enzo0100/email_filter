@@ -1,0 +1,34 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'email-filter'
+    static_configs:
+      - targets: ['app:8080']
+    metrics_path: '/metrics'
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Configuração para coletar métricas do PostgreSQL (usando postgres_exporter)
+  - job_name: 'postgresql'
+    static_configs:
+      - targets: ['postgres:9187']
+
+  # Configuração para coletar métricas do Redis
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:9121']
+
+# Regras de alerta (opcional)
+rule_files:
+  - 'alerts.yml'
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          # Configurar posteriormente se necessário
+          # - 'alertmanager:9093'
