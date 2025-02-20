@@ -11,9 +11,12 @@ import (
 
 	"github.com/enzo010/email-filter/internal/application/services"
 	"github.com/enzo010/email-filter/internal/domain/entities"
+	"github.com/enzo010/email-filter/internal/infrastructure/auth"
 	"github.com/enzo010/email-filter/internal/infrastructure/database"
+	"github.com/enzo010/email-filter/internal/infrastructure/middleware"
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type Server struct {
@@ -82,15 +85,18 @@ func NewServer() (*Server, error) {
 
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			origin = "http://localhost:3000" // Fallback para desenvolvimento
+		}
+
+		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Tenant-ID")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, Authorization, X-Tenant-ID")
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		w.Header().Set("Access-Control-Max-Age", "300")
 
 		if r.Method == "OPTIONS" {
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Tenant-ID")
-			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.WriteHeader(http.StatusOK)
 			return
 		}
@@ -100,28 +106,38 @@ func corsMiddleware(next http.Handler) http.Handler {
 }
 
 func (s *Server) setupRoutes() {
-	// Aplicar middleware CORS globalmente
-	s.router.Use(corsMiddleware)
+	// Configurar rate limiter (10 requisições por segundo por IP)
+	rateLimiter := middleware.NewRateLimiter(10, 10)
 
-	// Endpoints de saúde e métricas
+	// Aplicar middlewares globais
+	s.router.Use(corsMiddleware)
+	s.router.Use(middleware.MetricsMiddleware)
+	s.router.Use(middleware.RateLimitMiddleware(rateLimiter))
+
+	// Endpoints públicos
 	s.router.HandleFunc("/health", s.healthCheck).Methods("GET")
-	s.router.HandleFunc("/metrics", s.metrics).Methods("GET")
+	s.router.Handle("/metrics", promhttp.Handler())
 
 	// API v1
 	api := s.router.PathPrefix("/api/v1").Subrouter()
 
-	// Endpoints de autenticação
+	// Endpoints de autenticação (públicos)
 	api.HandleFunc("/auth/login", s.handleLogin).Methods("POST", "OPTIONS")
 
+	// Endpoints protegidos
+	protected := api.PathPrefix("").Subrouter()
+	protected.Use(middleware.AuthMiddleware)
+	protected.Use(middleware.TenantValidationMiddleware)
+
 	// Endpoints de emails
-	api.HandleFunc("/emails", s.handleClassifyEmail).Methods("POST")
-	api.HandleFunc("/emails", s.handleListEmails).Methods("GET")
-	api.HandleFunc("/emails/{id}", s.handleGetEmail).Methods("GET")
+	protected.HandleFunc("/emails", s.handleClassifyEmail).Methods("POST")
+	protected.HandleFunc("/emails", s.handleListEmails).Methods("GET")
+	protected.HandleFunc("/emails/{id}", s.handleGetEmail).Methods("GET")
 
 	// Endpoints de tarefas
-	api.HandleFunc("/tasks", s.handleListTasks).Methods("GET")
-	api.HandleFunc("/tasks/{id}", s.handleUpdateTask).Methods("PUT")
-	api.HandleFunc("/tasks/{id}", s.handleDeleteTask).Methods("DELETE")
+	protected.HandleFunc("/tasks", s.handleListTasks).Methods("GET")
+	protected.HandleFunc("/tasks/{id}", s.handleUpdateTask).Methods("PUT")
+	protected.HandleFunc("/tasks/{id}", s.handleDeleteTask).Methods("DELETE")
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -130,28 +146,41 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 
+	w.Header().Set("Content-Type", "application/json")
+
 	if err := json.NewDecoder(r.Body).Decode(&credentials); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Formato de requisição inválido"})
 		return
 	}
 
 	// Buscar usuário pelo email
 	user, err := s.userRepo.GetByEmail(r.Context(), credentials.Email)
 	if err != nil {
-		http.Error(w, "Credenciais inválidas", http.StatusUnauthorized)
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Credenciais inválidas"})
 		return
 	}
 
-	// TODO: Implementar verificação de senha com hash
-	if credentials.Password != "test123" {
-		http.Error(w, "Credenciais inválidas", http.StatusUnauthorized)
+	// Verificar senha
+	if !auth.CheckPassword(credentials.Password, user.PasswordHash) {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Credenciais inválidas"})
 		return
 	}
 
 	// Buscar tenant do usuário
 	tenant, err := s.tenantRepo.GetByID(r.Context(), user.TenantID)
 	if err != nil {
-		http.Error(w, "Erro ao buscar tenant", http.StatusInternalServerError)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Erro ao buscar tenant"})
+		return
+	}
+
+	// Gerar token JWT
+	token, err := auth.GenerateToken(user.ID, user.TenantID, user.Email, user.Role)
+	if err != nil {
+		http.Error(w, "Erro ao gerar token", http.StatusInternalServerError)
 		return
 	}
 
@@ -170,8 +199,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			"plan":      tenant.Plan,
 			"createdAt": tenant.CreatedAt,
 		},
-		// TODO: Implementar geração de token JWT
-		"token": "dummy-token",
+		"token": token,
 	}
 
 	json.NewEncoder(w).Encode(response)
@@ -179,11 +207,6 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) healthCheck(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "healthy"})
-}
-
-func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implementar métricas do Prometheus
-	json.NewEncoder(w).Encode(map[string]string{"metrics": "todo"})
 }
 
 func (s *Server) handleClassifyEmail(w http.ResponseWriter, r *http.Request) {
@@ -232,12 +255,8 @@ func (s *Server) handleListEmails(w http.ResponseWriter, r *http.Request) {
 		filters["end_date"] = endDate
 	}
 
-	// TODO: Extrair tenant_id do token de autenticação
-	tenantID := r.Header.Get("X-Tenant-ID")
-	if tenantID == "" {
-		http.Error(w, "tenant_id não fornecido", http.StatusBadRequest)
-		return
-	}
+	// Extrair tenant_id do contexto (adicionado pelo AuthMiddleware)
+	tenantID := r.Context().Value(middleware.TenantIDKey).(string)
 
 	emails, err := s.emailRepo.ListByTenant(r.Context(), tenantID, filters)
 	if err != nil {

@@ -10,6 +10,58 @@ import (
 	"github.com/jdkato/prose/v2"
 )
 
+// parseDateEntity tenta extrair uma data de um texto
+func parseDateEntity(text string) (time.Time, error) {
+	text = strings.ToLower(text)
+	now := time.Now()
+
+	// Padrões comuns em português
+	patterns := map[string]time.Time{
+		"hoje":           now,
+		"amanhã":         now.AddDate(0, 0, 1),
+		"próxima semana": now.AddDate(0, 0, 7),
+		"próximo mês":    now.AddDate(0, 1, 0),
+		"semana que vem": now.AddDate(0, 0, 7),
+		"mês que vem":    now.AddDate(0, 1, 0),
+	}
+
+	// Verificar padrões diretos
+	for pattern, date := range patterns {
+		if strings.Contains(text, pattern) {
+			return date, nil
+		}
+	}
+
+	// Tentar formatos de data comuns
+	formats := []string{
+		"02/01/2006",
+		"02-01-2006",
+		"2006-01-02",
+		"02/01/06",
+		"02-01-06",
+	}
+
+	for _, format := range formats {
+		if date, err := time.Parse(format, text); err == nil {
+			return date, nil
+		}
+	}
+
+	// Tentar interpretar expressões relativas
+	if strings.Contains(text, "dia") {
+		parts := strings.Fields(text)
+		for i, part := range parts {
+			if part == "dia" && i+1 < len(parts) {
+				if day, err := time.Parse("2", parts[i+1]); err == nil {
+					return time.Date(now.Year(), now.Month(), day.Day(), 0, 0, 0, 0, now.Location()), nil
+				}
+			}
+		}
+	}
+
+	return time.Time{}, fmt.Errorf("não foi possível extrair data do texto: %s", text)
+}
+
 // Model representa o modelo NLP para classificação de emails
 type Model struct {
 	doc *prose.Document
@@ -57,9 +109,15 @@ func (m *Model) ClassifyPriority(email *entities.Email) entities.Priority {
 	hasNearDate := false
 	for _, ent := range m.doc.Entities() {
 		if ent.Label == "DATE" || ent.Label == "TIME" {
-			// TODO: Implementar parsing de data e verificar proximidade
-			hasNearDate = true
-			break
+			// Tentar extrair data da entidade
+			date, err := parseDateEntity(ent.Text)
+			if err == nil {
+				// Verificar se a data está dentro dos próximos 3 dias
+				if time.Until(date) <= 72*time.Hour && time.Until(date) > 0 {
+					hasNearDate = true
+					break
+				}
+			}
 		}
 	}
 
@@ -205,9 +263,86 @@ func (m *Model) ExtractTasks(email *entities.Email) []entities.Task {
 	return tasks
 }
 
-// AnalyzeConfidence calcula a confiança da classificação
+// AnalyzeConfidence calcula a confiança da classificação baseado em múltiplos fatores
 func (m *Model) AnalyzeConfidence(email *entities.Email) float64 {
-	// TODO: Implementar cálculo real de confiança
-	// Por enquanto retorna um valor fixo
-	return 0.85
+	var confidence float64 = 0.0
+	totalFactors := 0.0
+
+	// Fator 1: Comprimento do conteúdo (emails muito curtos têm menor confiança)
+	contentLength := len(email.Content)
+	if contentLength > 500 {
+		confidence += 1.0
+	} else if contentLength > 200 {
+		confidence += 0.8
+	} else if contentLength > 100 {
+		confidence += 0.6
+	} else {
+		confidence += 0.4
+	}
+	totalFactors++
+
+	// Fator 2: Presença de entidades nomeadas
+	entityCount := len(m.doc.Entities())
+	if entityCount > 5 {
+		confidence += 1.0
+	} else if entityCount > 3 {
+		confidence += 0.8
+	} else if entityCount > 1 {
+		confidence += 0.6
+	} else {
+		confidence += 0.4
+	}
+	totalFactors++
+
+	// Fator 3: Força da classificação de categoria
+	categories := map[string][]string{
+		"financeiro": {"pagamento", "fatura", "cobrança", "orçamento", "invoice"},
+		"suporte":    {"problema", "erro", "bug", "ajuda", "support"},
+		"comercial":  {"proposta", "venda", "cliente", "reunião", "meeting"},
+		"rh":         {"férias", "contrato", "ponto", "vacation", "hr"},
+		"ti":         {"sistema", "acesso", "senha", "system", "password"},
+	}
+
+	text := strings.ToLower(email.Subject + " " + email.Content)
+	maxCategoryScore := 0
+	for _, terms := range categories {
+		score := 0
+		for _, term := range terms {
+			if strings.Contains(text, term) {
+				score++
+			}
+		}
+		if score > maxCategoryScore {
+			maxCategoryScore = score
+		}
+	}
+
+	if maxCategoryScore > 3 {
+		confidence += 1.0
+	} else if maxCategoryScore > 2 {
+		confidence += 0.8
+	} else if maxCategoryScore > 1 {
+		confidence += 0.6
+	} else {
+		confidence += 0.4
+	}
+	totalFactors++
+
+	// Fator 4: Presença de datas e horários
+	hasTimeEntities := false
+	for _, ent := range m.doc.Entities() {
+		if ent.Label == "DATE" || ent.Label == "TIME" {
+			hasTimeEntities = true
+			break
+		}
+	}
+	if hasTimeEntities {
+		confidence += 1.0
+	} else {
+		confidence += 0.5
+	}
+	totalFactors++
+
+	// Calcular média ponderada final
+	return confidence / totalFactors
 }

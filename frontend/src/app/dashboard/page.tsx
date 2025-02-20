@@ -13,9 +13,12 @@ export default function DashboardPage() {
     status: "",
   })
 
-  const { data: emails = [], isLoading, error } = useQuery({
+  const { data: emails = [], isLoading, error, isError } = useQuery({
     queryKey: ["emails", filters],
     queryFn: () => emailsApi.getEmails(filters),
+    retry: 2,
+    retryDelay: 1000,
+    staleTime: 30000
   })
 
   if (isLoading) {
@@ -29,12 +32,20 @@ export default function DashboardPage() {
     )
   }
 
-  if (error) {
+  if (isError) {
     return (
-      <div className="text-center py-12">
-        <p className="text-red-500">
-          Erro ao carregar emails. Por favor, tente novamente mais tarde.
-        </p>
+      <div className="flex flex-col items-center justify-center py-12">
+        <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-4 mb-4">
+          <p className="text-red-600 dark:text-red-400 text-center">
+            {error instanceof Error ? error.message : 'Erro ao carregar emails. Por favor, tente novamente mais tarde.'}
+          </p>
+        </div>
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-4 px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+        >
+          Tentar Novamente
+        </button>
       </div>
     )
   }
