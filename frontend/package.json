@@ -8,15 +8,25 @@
     "start": "next start",
     "lint": "next lint",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "prisma:seed": "ts-node prisma/seed.ts"
+  },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
   },
   "dependencies": {
+    "@prisma/client": "^6.4.1",
     "@shadcn/ui": "^0.0.4",
     "@tanstack/react-query": "^5.64.2",
+    "@types/jsonwebtoken": "^9.0.8",
+    "@vercel/postgres": "^0.10.0",
+    "bcryptjs": "^3.0.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.473.0",
     "next": "15.1.6",
+    "prisma": "^6.4.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^2.6.0"
@@ -24,6 +34,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@jest/types": "^29.6.3",
+    "@types/bcryptjs": "^2.4.6",
     "@types/jest": "^29.5.14",
     "@types/node": "^20",
     "@types/node-fetch": "^2.6.12",

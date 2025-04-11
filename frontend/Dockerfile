@@ -9,9 +9,13 @@ COPY next.config.ts ./
 COPY postcss.config.mjs ./
 COPY tailwind.config.ts ./
 COPY eslint.config.mjs ./
+COPY prisma ./prisma/
 
 # Instalar dependências
 RUN npm ci
+
+# Gerar cliente Prisma
+RUN npx prisma generate
 
 # Copiar código fonte
 COPY src ./src
@@ -24,4 +28,4 @@ RUN npm run build
 EXPOSE 3000
 
 # Iniciar em modo de produção
-CMD ["npm", "start"]
+CMD ["sh", "-c", "npx prisma migrate deploy && npm start"]

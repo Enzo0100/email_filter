@@ -9,11 +9,13 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./internal/infrastructure/database/migrations:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   redis:
     image: redis:alpine
@@ -26,6 +28,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   api:
     build:
@@ -33,20 +36,21 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8080:8080"
+      - "9090:9090"
     environment:
       - PORT=8080
       - ENV=development
-      - API_SECRET=lkaljkdlasjd
+      - API_SECRET=${API_SECRET}
       - DB_HOST=postgres
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - DB_NAME=email_filter
       - DB_PORT=5432
       - DB_SSLMODE=disable
-      - EMAIL_SERVER=imap.gmail.com
-      - EMAIL_PORT=993
-      - EMAIL_USERNAME=appspidersense@gmail.com
-      - EMAIL_PASSWORD=ugqeynsmbzadptjg
+      - EMAIL_SERVER=${EMAIL_SERVER}
+      - EMAIL_PORT=${EMAIL_PORT}
+      - EMAIL_USERNAME=${EMAIL_USERNAME}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - FREE_PLAN_EMAIL_LIMIT=100
@@ -58,6 +62,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
 
   frontend:
     build:
@@ -66,9 +76,13 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://api:8080
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/email_filter
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
+      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
     depends_on:
       - api
+    restart: unless-stopped
 
 volumes:
   postgres_data:
